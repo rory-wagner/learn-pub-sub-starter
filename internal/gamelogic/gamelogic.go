@@ -90,3 +90,8 @@ func (gs *GameState) CommandStatus() {
 		fmt.Printf("* %v: %v, %v\n", unit.ID, unit.Location, unit.Rank)
 	}
 }
+
+func Exit(err error, code int) {
+	fmt.Println(err)
+	os.Exit(code)
+}

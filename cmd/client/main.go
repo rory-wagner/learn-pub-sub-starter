@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/signal"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -30,10 +29,49 @@ func main() {
 		return
 	}
 
-	pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+uName, routing.PauseKey, int(amqp.Transient))
+	// pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+uName, routing.PauseKey, int(amqp.Transient))
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-	println("shutting down")
+	gameState := gamelogic.NewGameState(uName)
+	hp := handlerPause(gameState)
+
+	pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+uName, routing.PauseKey, int(amqp.Transient), hp)
+
+	for {
+		s := gamelogic.GetInput()
+		if len(s) == 0 {
+			continue
+		}
+		switch s[0] {
+		case "spawn":
+			err = gameState.CommandSpawn(s)
+			if err != nil {
+				fmt.Println(err)
+			}
+		case "move":
+			_, err = gameState.CommandMove(s)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Println("successful move")
+			}
+		case "status":
+			gameState.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("Spamming not allowed yet!")
+		case "quit":
+			gamelogic.PrintQuit()
+			os.Exit(0)
+		default:
+			fmt.Println("command unknown")
+		}
+	}
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
+		gs.HandlePause(ps)
+	}
 }
