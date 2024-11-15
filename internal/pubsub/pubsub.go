@@ -8,6 +8,12 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const (
+	Ack = iota
+	NackRequeue
+	NackDiscard
+)
+
 func DeclareAndBind(
 	conn *amqp.Connection,
 	exchange,
@@ -19,13 +25,16 @@ func DeclareAndBind(
 	if err != nil {
 		return &amqp.Channel{}, amqp.Queue{}, err
 	}
+	t := amqp.Table{
+		"x-dead-letter-exchange": "peril_dlx",
+	}
 	q, err := ch.QueueDeclare(
 		queueName,
 		simpleQueueType == int(amqp.Persistent),
 		simpleQueueType == int(amqp.Transient),
 		simpleQueueType == int(amqp.Transient),
 		false,
-		nil,
+		t,
 	)
 	if err != nil {
 		return &amqp.Channel{}, amqp.Queue{}, err
@@ -59,27 +68,36 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	simpleQueueType int,
-	handler func(T),
+	handler func(T, *amqp.Channel) int,
 ) error {
 	ch, _, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
 		return err
 	}
-	aCh, err := ch.Consume(queueName, "", false, false, false, false, nil)
+	amqpDelivery, err := ch.Consume(queueName, "", false, false, false, false, nil)
 	if err != nil {
 		return err
 	}
 	go func() {
-		for d := range aCh {
+		for d := range amqpDelivery {
 			var t T
 			err = json.Unmarshal(d.Body, &t)
 			if err != nil {
 				fmt.Println(fmt.Errorf("error unmarshalling delivery body: %v", err))
-				fmt.Println(d)
-				fmt.Println(t)
 			}
-			handler(t)
-			d.Ack(false)
+			ack := handler(t, ch)
+			fmt.Printf("ack: %v", ack)
+			switch ack {
+			case Ack:
+				d.Ack(false)
+				fmt.Println("ACKING")
+			case NackRequeue:
+				d.Nack(false, true)
+				fmt.Println("REQUEING")
+			case NackDiscard:
+				d.Nack(false, false)
+				fmt.Println("DISCARDING")
+			}
 		}
 	}()
 	return nil

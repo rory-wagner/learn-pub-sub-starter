@@ -18,6 +18,8 @@ func main() {
 	defer conn.Close()
 	fmt.Println("connection succesful")
 
+	
+
 	ch, err := conn.Channel()
 	if err != nil {
 		gamelogic.Exit(err, 1)
