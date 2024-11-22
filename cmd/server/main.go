@@ -18,8 +18,6 @@ func main() {
 	defer conn.Close()
 	fmt.Println("connection succesful")
 
-	
-
 	ch, err := conn.Channel()
 	if err != nil {
 		gamelogic.Exit(err, 1)
@@ -29,6 +27,14 @@ func main() {
 	if err != nil {
 		gamelogic.Exit(err, 1)
 	}
+
+	gameState := gamelogic.NewGameState("Server")
+
+	hgl := pubsub.HandlerGameLog(gameState)
+
+	ugl := pubsub.UnmarshallerGameLog()
+
+	pubsub.SubscribeGob(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", int(amqp.Persistent), hgl, ugl)
 
 	pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.GameLogSlug, routing.GameLogSlug+".*", int(amqp.Persistent))
 
